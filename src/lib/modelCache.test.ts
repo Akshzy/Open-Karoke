@@ -1,0 +1,32 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ensureKaraokeModel, KARAOKE_MODEL_URL } from './modelCache';
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('karaoke model cache', () => {
+  it('uses a complete cached model without making a network request', async () => {
+    const match = vi.fn().mockResolvedValue(new Response(null, { headers: { 'content-length': String(50 * 1024 * 1024) } }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('caches', { open: vi.fn().mockResolvedValue({ match, delete: vi.fn(), put: vi.fn() }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const updates: Array<{ cached: boolean }> = [];
+
+    await ensureKaraokeModel((progress) => updates.push(progress));
+
+    expect(match).toHaveBeenCalledWith(KARAOKE_MODEL_URL);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(updates.at(-1)?.cached).toBe(true);
+  });
+
+  it('rejects an incomplete network response instead of caching it', async () => {
+    const put = vi.fn();
+    vi.stubGlobal('caches', { open: vi.fn().mockResolvedValue({ match: vi.fn(), delete: vi.fn(), put }) });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Uint8Array([8, 1, 2, 3]), {
+      status: 200,
+      headers: { 'content-length': '4' },
+    })));
+
+    await expect(ensureKaraokeModel(() => undefined)).rejects.toThrow('incomplete');
+    expect(put).not.toHaveBeenCalled();
+  });
+});
