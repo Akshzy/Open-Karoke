@@ -22,8 +22,8 @@ export function UploadStep(props: {
   return (
     <section className="step-panel" aria-labelledby="upload-title">
       <div className="section-heading">
-        <p className="eyebrow">Step 01</p>
-        <h1 id="upload-title">Bring your song.<br/><em>Keep it private.</em></h1>
+        <p className="eyebrow">1 / 3 · Upload</p>
+        <h1 id="upload-title">Choose a song</h1>
         <p>Your audio stays on this device. The first vocal split downloads a reusable open-source AI model.</p>
       </div>
 
@@ -36,9 +36,9 @@ export function UploadStep(props: {
           onDrop={(event) => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]); }}
         >
           <span className="upload-icon"><Icon name="upload" /></span>
-          <strong>Choose a song</strong>
+          <strong>Upload audio</strong>
           <small>or drop MP3, WAV, or browser-supported FLAC</small>
-          <span className="file-pill">Select audio</span>
+          <span className="file-pill">Browse files</span>
         </button>
       ) : (
         <div className="song-card">
@@ -57,15 +57,15 @@ export function UploadStep(props: {
       {props.song && props.status.phase !== 'done' && (
         <div className="process-card">
           <div className="process-top">
-            <span className="upload-icon small"><Icon name="spark" /></span>
+            <span className="upload-icon small"><Icon name="music" /></span>
             <div><strong>{busy ? props.status.detail : 'Create the instrumental'}</strong><small>{props.status.backend} preferred · WASM fallback · model cached after first use</small></div>
-            <b>{busy ? `${Math.round(props.status.fraction * 100)}%` : 'LOCAL AI'}</b>
+            <b>{busy ? `${Math.round(props.status.fraction * 100)}%` : 'ON DEVICE'}</b>
           </div>
           {busy && <progress value={props.status.fraction} max={1}>{props.status.fraction}</progress>}
           {props.status.error && <p className="error" role="alert">{props.status.error}</p>}
           <div className="button-row">
             {busy ? <button className="button secondary" onClick={props.onCancel}><Icon name="stop" /> Cancel after current operation</button>
-              : <button className="button primary" onClick={props.onSeparate}><Icon name="spark" /> Remove vocals locally</button>}
+              : <button className="button primary" onClick={props.onSeparate}><Icon name="music" /> Remove vocals locally</button>}
           </div>
         </div>
       )}

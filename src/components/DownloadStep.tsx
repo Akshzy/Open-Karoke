@@ -44,8 +44,8 @@ export function DownloadStep(props: {
   return (
     <section className="step-panel" aria-labelledby="download-title">
       <div className="section-heading">
-        <p className="eyebrow">Step 03</p>
-        <h1 id="download-title">Take it with you.<br/><em>Play it anywhere.</em></h1>
+        <p className="eyebrow">3 / 3 · Export</p>
+        <h1 id="download-title">Export your karaoke</h1>
         <p>Exports are rendered on this device. MP4 needs browser H.264 and AAC encoders; audio + LRC always remains available.</p>
       </div>
       <div className="format-toggle" aria-label="Video aspect ratio">

@@ -23,7 +23,7 @@ export function EditStep(props: {
   return (
     <section className="step-panel wide" aria-labelledby="edit-title">
       <div className="section-heading compact-heading">
-        <div><p className="eyebrow">Step 02</p><h1 id="edit-title">Sync the words.<br/><em>Own the moment.</em></h1></div>
+        <div><p className="eyebrow">2 / 3 · Edit</p><h1 id="edit-title">Add synchronized lyrics</h1></div>
         <p>Import real LRC timestamps or tap the red dot beside a line at the exact playhead position.</p>
       </div>
       <div className="editor-grid">
