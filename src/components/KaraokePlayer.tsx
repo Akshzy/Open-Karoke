@@ -26,10 +26,16 @@ export const KaraokePlayer = forwardRef<PlayerHandle, {
     if (!audio.current) return;
     if (audio.current.paused) await audio.current.play(); else audio.current.pause();
   };
-  const seekBy = (seconds: number) => {
+  const seekTo = (nextTime: number) => {
     if (!audio.current) return;
     const limit = Number.isFinite(audio.current.duration) ? audio.current.duration : Number.POSITIVE_INFINITY;
-    audio.current.currentTime = Math.max(0, Math.min(limit, audio.current.currentTime + seconds));
+    const clamped = Math.max(0, Math.min(limit, nextTime));
+    audio.current.currentTime = clamped;
+    setTime(clamped);
+  };
+  const seekBy = (seconds: number) => {
+    if (!audio.current) return;
+    seekTo(audio.current.currentTime + seconds);
   };
   useImperativeHandle(ref, () => ({
     currentTime: () => audio.current?.currentTime ?? 0,
@@ -71,11 +77,11 @@ export const KaraokePlayer = forwardRef<PlayerHandle, {
         </div>
         <button className="fullscreen-button" onClick={() => stage.current?.requestFullscreen?.()} aria-label="Open fullscreen"><Icon name="fullscreen" /></button>
       </div>
-      <audio ref={audio} onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} onDurationChange={(event) => setDuration(event.currentTarget.duration)} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
+      <audio ref={audio} onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} onSeeked={(event) => setTime(event.currentTarget.currentTime)} onDurationChange={(event) => setDuration(event.currentTarget.duration)} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
       <div className="transport">
         <button className="play-button" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}><Icon name={playing ? 'pause' : 'play'} /></button>
         <span>{format(time)}</span>
-        <input aria-label="Seek" type="range" min={0} max={duration || 1} step={0.05} value={Math.min(time, duration || 1)} onChange={(event) => { if (audio.current) audio.current.currentTime = Number(event.target.value); }} />
+        <input aria-label="Seek" type="range" min={0} max={duration || 1} step={0.05} value={Math.min(time, duration || 1)} onChange={(event) => seekTo(Number(event.target.value))} />
         <span>{format(duration || 0)}</span>
       </div>
       {karaoke && <div className="offset-control">
