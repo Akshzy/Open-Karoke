@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeLyricIndex, formatTimestamp, lyricDisplayState, nextLyricIndex, parseLrc, parseTimestamp, serializeLrc, wordHighlightState } from './lrc';
+import { activeLyricIndex, formatTimestamp, lyricDisplayState, nextLyricIndex, parseLrc, parsePlainLyrics, parseTimestamp, serializeLrc, wordHighlightState } from './lrc';
 
 describe('LRC parsing', () => {
   it('preserves multilingual text and sorts timestamps', () => {
@@ -12,6 +12,14 @@ describe('LRC parsing', () => {
     const result = parseLrc('[00:01.00][00:05.50]Repeat');
     expect(result).toHaveLength(2);
     expect(result[1].time).toBe(5.5);
+  });
+
+  it('imports multilingual plain lyrics without fabricating timestamps', () => {
+    expect(parsePlainLyrics('മലയാളം\n\n தமிழ் \nनमस्ते')).toEqual([
+      { id: 'plain-0', time: 0, timed: false, text: 'മലയാളം' },
+      { id: 'plain-1', time: 0, timed: false, text: 'தமிழ்' },
+      { id: 'plain-2', time: 0, timed: false, text: 'नमस्ते' },
+    ]);
   });
 
   it('round-trips times and UTF-8 text', () => {

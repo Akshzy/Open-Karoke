@@ -1,4 +1,5 @@
 export const KARAOKE_MODEL_URL = 'https://huggingface.co/Blane187/all_public_uvr_models/resolve/main/UVR-MDX-NET-Inst_HQ_3.onnx';
+export const VOCAL_MODEL_URL = 'https://huggingface.co/Blane187/all_public_uvr_models/resolve/main/Kim_Vocal_2.onnx';
 export const MODEL_CACHE_NAME = 'web-demix2-models';
 const MIN_MODEL_BYTES = 40 * 1024 * 1024;
 
@@ -12,7 +13,8 @@ function validSize(value: number) {
   return Number.isFinite(value) && value >= MIN_MODEL_BYTES;
 }
 
-export async function ensureKaraokeModel(
+async function ensureModel(
+  modelUrl: string,
   onProgress: (progress: ModelDownloadProgress) => void,
   signal?: AbortSignal,
 ) {
@@ -21,17 +23,17 @@ export async function ensureKaraokeModel(
   }
 
   const cache = await caches.open(MODEL_CACHE_NAME);
-  const cached = await cache.match(KARAOKE_MODEL_URL);
+  const cached = await cache.match(modelUrl);
   if (cached) {
     const size = Number(cached.headers.get('content-length'));
     if (validSize(size)) {
       onProgress({ loaded: size, total: size, cached: true });
       return;
     }
-    await cache.delete(KARAOKE_MODEL_URL);
+    await cache.delete(modelUrl);
   }
 
-  const response = await fetch(KARAOKE_MODEL_URL, {
+  const response = await fetch(modelUrl, {
     mode: 'cors',
     cache: 'no-store',
     credentials: 'omit',
@@ -58,7 +60,7 @@ export async function ensureKaraokeModel(
   if (!validSize(loaded)) throw new Error(`Model download was incomplete (${(loaded / 1024 / 1024).toFixed(1)} MB received).`);
 
   const blob = new Blob(chunks as BlobPart[], { type: 'application/octet-stream' });
-  await cache.put(KARAOKE_MODEL_URL, new Response(blob, {
+  await cache.put(modelUrl, new Response(blob, {
     headers: {
       'content-type': 'application/octet-stream',
       'content-length': String(loaded),
@@ -67,4 +69,12 @@ export async function ensureKaraokeModel(
   }));
   await navigator.storage?.persist?.().catch(() => false);
   onProgress({ loaded, total: loaded, cached: false });
+}
+
+export function ensureKaraokeModel(onProgress: (progress: ModelDownloadProgress) => void, signal?: AbortSignal) {
+  return ensureModel(KARAOKE_MODEL_URL, onProgress, signal);
+}
+
+export function ensureVocalModel(onProgress: (progress: ModelDownloadProgress) => void, signal?: AbortSignal) {
+  return ensureModel(VOCAL_MODEL_URL, onProgress, signal);
 }

@@ -5,6 +5,8 @@ import { Icon } from './Icons';
 
 export interface PlayerHandle {
   currentTime: () => number;
+  togglePlayback: () => Promise<void>;
+  seekBy: (seconds: number) => void;
 }
 
 export const KaraokePlayer = forwardRef<PlayerHandle, {
@@ -20,7 +22,20 @@ export const KaraokePlayer = forwardRef<PlayerHandle, {
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  useImperativeHandle(ref, () => ({ currentTime: () => audio.current?.currentTime ?? 0 }));
+  const toggle = async () => {
+    if (!audio.current) return;
+    if (audio.current.paused) await audio.current.play(); else audio.current.pause();
+  };
+  const seekBy = (seconds: number) => {
+    if (!audio.current) return;
+    const limit = Number.isFinite(audio.current.duration) ? audio.current.duration : Number.POSITIVE_INFINITY;
+    audio.current.currentTime = Math.max(0, Math.min(limit, audio.current.currentTime + seconds));
+  };
+  useImperativeHandle(ref, () => ({
+    currentTime: () => audio.current?.currentTime ?? 0,
+    togglePlayback: toggle,
+    seekBy,
+  }));
   const karaoke = props.variant !== 'vocals';
   const activeLines = karaoke ? props.lines : [];
   const activeOffset = karaoke ? props.offset : 0;
@@ -40,10 +55,6 @@ export const KaraokePlayer = forwardRef<PlayerHandle, {
     : display.kind === 'empty' ? 'No lyrics loaded'
     : display.kind === 'intro' ? 'Instrumental intro'
       : display.kind === 'gap' ? 'Instrumental break' : '';
-  const toggle = async () => {
-    if (!audio.current) return;
-    if (audio.current.paused) await audio.current.play(); else audio.current.pause();
-  };
   const format = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
   return (

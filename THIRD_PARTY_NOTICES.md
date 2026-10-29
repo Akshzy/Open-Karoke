@@ -7,6 +7,8 @@ OpenKaraoke Studio is MIT-licensed. The following software and model are used wi
 | `web-audio-separation` | Browser MDX separation pipeline | MIT, incidentist/web-audio-separation |
 | ONNX Runtime Web | WebGPU and WASM inference | MIT, Microsoft/onnxruntime |
 | `UVR-MDX-NET-Inst_HQ_3` model | Lead- and backing-vocal removal | MIT; Ultimate Vocal Remover / KUIELab MDX-Net lineage. Fetched from the `Blane187/all_public_uvr_models` source registered by `web-audio-separation`. |
+| `Kim_Vocal_2` model | Optional higher-accuracy isolated-vocal stem | MIT; Ultimate Vocal Remover / KUIELab MDX-Net lineage. Fetched on demand from the same model source and cached locally. |
+| Transformers.js / `onnx-community/whisper-tiny` | Optional local draft lyric transcription with timestamps | Apache-2.0 / MIT model lineage; Hugging Face Transformers.js and OpenAI Whisper. Model files are fetched and cached only on demand. |
 | Mediabunny | WebCodecs encoding and MP4 muxing | MPL-2.0, Vanilagy/mediabunny |
 | LRCLIB | Optional synchronized-lyrics lookup API | Free public service and open-source server (AGPL-3.0), tranxuanthang/lrclib; lyric rights remain with their respective owners |
 | Lyricsfile specification | Word-level lyric timing format | CC0-1.0, tranxuanthang/lyricsfile |

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { lyricsFromRecord, searchLrclib, type LrclibRecord } from '../lib/lrclib';
 import { KaraokePlayer } from './KaraokePlayer';
+import { LyricsEditor } from './LyricsEditor';
 
 describe('lyrics state propagation', () => {
   it('shows an honest empty state instead of calling it an instrumental intro', () => {
@@ -35,5 +36,29 @@ describe('lyrics state propagation', () => {
     expect(selected.kind).toBe('line');
     expect(markup).toContain('வணக்கம் உலகம்');
     vi.unstubAllGlobals();
+  });
+
+  it('offers guided controls for untimed multilingual lyrics without inventing timing', () => {
+    const markup = renderToStaticMarkup(<LyricsEditor
+      lines={[{ id: 'plain-0', time: 0, timed: false, text: 'മലയാളം വരി' }]}
+      onChange={() => undefined}
+      getPlaybackTime={() => 12.5}
+      onTogglePlayback={() => undefined}
+      onSeekBy={() => undefined}
+      songTitle="Song"
+      songArtist="Artist"
+      originalTitle="Song.mp3"
+      songDuration={120}
+      vocalsUrl="blob:vocals"
+      onMetadata={() => undefined}
+    />);
+    expect(markup).toContain('മലയാളം വരി');
+    expect(markup).toContain('Play / pause');
+    expect(markup).toContain('Rewind 3s');
+    expect(markup).toContain('Undo timestamp');
+    expect(markup).toContain('Timestamp next line');
+    expect(markup).toContain('Detect draft lyrics locally');
+    expect(markup).toContain('Auto-detect');
+    expect(markup).toContain('Malayalam');
   });
 });

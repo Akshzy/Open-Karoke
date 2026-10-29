@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "@vitejs/plugin-react": "latest",
     "mediabunny": "1.61.6",
     "react": "latest",
@@ -25,5 +26,12 @@
     "@types/react-dom": "latest",
     "typescript": "latest",
     "vitest": "latest"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "onnxruntime-node",
+      "protobufjs",
+      "sharp"
+    ]
   }
 }

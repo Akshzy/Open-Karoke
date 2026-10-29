@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ensureKaraokeModel, KARAOKE_MODEL_URL } from './modelCache';
+import { ensureKaraokeModel, ensureVocalModel, KARAOKE_MODEL_URL, VOCAL_MODEL_URL } from './modelCache';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -16,6 +16,15 @@ describe('karaoke model cache', () => {
     expect(match).toHaveBeenCalledWith(KARAOKE_MODEL_URL);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(updates.at(-1)?.cached).toBe(true);
+  });
+
+  it('caches the optional vocal-focused model independently', async () => {
+    const match = vi.fn().mockResolvedValue(new Response(null, { headers: { 'content-length': String(66_759_214) } }));
+    vi.stubGlobal('caches', { open: vi.fn().mockResolvedValue({ match, delete: vi.fn(), put: vi.fn() }) });
+    vi.stubGlobal('fetch', vi.fn());
+    await ensureVocalModel(() => undefined);
+    expect(match).toHaveBeenCalledWith(VOCAL_MODEL_URL);
+    expect(VOCAL_MODEL_URL).not.toBe(KARAOKE_MODEL_URL);
   });
 
   it('rejects an incomplete network response instead of caching it', async () => {

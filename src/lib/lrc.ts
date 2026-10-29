@@ -22,6 +22,13 @@ export function parseLrc(input: string): LyricLine[] {
   return lines.sort((a, b) => a.time - b.time);
 }
 
+export function parsePlainLyrics(input: string): LyricLine[] {
+  return input.replace(/^\uFEFF/, '').split(/\r?\n/)
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .map((text, index) => ({ id: `plain-${index}`, time: 0, timed: false, text }));
+}
+
 export function formatTimestamp(seconds: number): string {
   const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
   const minutes = Math.floor(safe / 60);

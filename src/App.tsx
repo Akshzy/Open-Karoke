@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LyricLine, SeparationStatus, SongState, VideoAspect, WorkflowStep } from './types';
-import { inspectAudio, separateSong } from './lib/audio';
+import { enhanceVocalStem, inspectAudio, separateSong } from './lib/audio';
 import { loadProject, saveProject } from './lib/storage';
 import { StepHeader } from './components/StepHeader';
 import { UploadStep } from './components/UploadStep';
@@ -18,11 +18,15 @@ export default function App() {
   const [step, setStep] = useState<WorkflowStep>(1);
   const [song, setSong] = useState<SongState | null>(null);
   const [status, setStatus] = useState<SeparationStatus>(initialStatus);
+  const [vocalStatus, setVocalStatus] = useState<SeparationStatus>(initialStatus);
   const [lyrics, setLyrics] = useState<LyricLine[]>(restored?.lyrics ?? []);
   const [offset, setOffset] = useState(restored?.offset ?? 0);
   const [aspect, setAspect] = useState<VideoAspect>(restored?.aspect ?? 'portrait');
   const [toast, setToast] = useState('');
   const separationAbort = useRef<AbortController | null>(null);
+  const vocalAbort = useRef<AbortController | null>(null);
+  const songRef = useRef<SongState | null>(null);
+  songRef.current = song;
 
   useEffect(() => {
     if (!toast) return;
@@ -30,11 +34,14 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => () => {
-    if (song) [song.originalUrl, song.instrumentalUrl, song.vocalsUrl].forEach((url) => url && URL.revokeObjectURL(url));
-  }, [song]);
+    const current = songRef.current;
+    if (current) [current.originalUrl, current.instrumentalUrl, current.vocalsUrl].forEach((url) => url && URL.revokeObjectURL(url));
+  }, []);
 
   const handleFile = async (file: File) => {
+    vocalAbort.current?.abort();
     setStatus(initialStatus);
+      setVocalStatus(initialStatus);
     try {
       const { duration } = await inspectAudio(file);
       if (duration > 15 * 60) throw new Error('For browser memory safety, this build limits songs to 15 minutes. Trim the file and try again.');
@@ -45,6 +52,30 @@ export default function App() {
       setSong({ file, ...metadata, duration, originalUrl: URL.createObjectURL(file) });
     } catch (error) {
       setStatus({ ...initialStatus, phase: 'error', error: error instanceof Error ? error.message : String(error) });
+    }
+  };
+
+  const runVocalEnhancement = async () => {
+    if (!song) return;
+    const targetFile = song.file;
+    vocalAbort.current = new AbortController();
+    setVocalStatus({ ...initialStatus, phase: 'loading-model', detail: 'Loading the vocal-focused model' });
+    try {
+      const vocalsUrl = await enhanceVocalStem(song, setVocalStatus, vocalAbort.current.signal);
+      const current = songRef.current;
+      if (!current || current.file !== targetFile) {
+        URL.revokeObjectURL(vocalsUrl);
+        return;
+      }
+      const previousVocalsUrl = current.vocalsUrl;
+      setSong({ ...current, vocalsUrl });
+      if (previousVocalsUrl) URL.revokeObjectURL(previousVocalsUrl);
+      setVocalStatus({ ...initialStatus, phase: 'done', fraction: 1, detail: 'Cleaner isolated vocals ready' });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') setVocalStatus({ ...initialStatus, phase: 'cancelled', detail: 'Vocal enhancement cancelled' });
+      else setVocalStatus({ ...initialStatus, phase: 'error', error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      vocalAbort.current = null;
     }
   };
 
@@ -85,7 +116,7 @@ export default function App() {
       <StepHeader current={step} onStep={navigate} />
       <main>
         {step === 1 && <UploadStep song={song} status={status} onFile={handleFile} onSeparate={runSeparation} onCancel={() => { separationAbort.current?.abort(); setToast('Cancellation requested. An active inference operation may need to finish first.'); }} onContinue={() => navigate(2)} />}
-        {step === 2 && song?.instrumentalUrl && <EditStep song={song} lines={lyrics} offset={offset} onLines={setLyrics} onMetadata={(metadata) => setSong((current) => current ? { ...current, ...metadata } : current)} onOffset={setOffset} onSave={persist} onContinue={() => navigate(3)} />}
+        {step === 2 && song?.instrumentalUrl && <EditStep song={song} lines={lyrics} offset={offset} vocalStatus={vocalStatus} onEnhanceVocals={() => void runVocalEnhancement()} onCancelVocalEnhancement={() => vocalAbort.current?.abort()} onLines={setLyrics} onMetadata={(metadata) => setSong((current) => current ? { ...current, ...metadata } : current)} onOffset={setOffset} onSave={persist} onContinue={() => navigate(3)} />}
         {step === 3 && song?.instrumentalUrl && song.vocalsUrl && <DownloadStep song={song} lines={lyrics} offset={offset} aspect={aspect} onAspect={setAspect} />}
       </main>
       <footer id="about">

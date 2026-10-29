@@ -6,6 +6,8 @@ A free, open-source, mobile-first karaoke creator that runs entirely in the brow
 
 - Vite + React + TypeScript installable PWA, designed for phones first.
 - Local vocal separation with `UVR-MDX-NET-Inst_HQ_3` through `web-audio-separation` and ONNX Runtime Web. This model targets a clean instrumental by removing lead and backing vocals. It is fetched from the browser-compatible source registered by that package, with byte progress, abort support, size validation, and Cache Storage persistence.
+- Optional on-demand `Kim_Vocal_2` pass improves the isolated-vocal stem without replacing or recomputing the karaoke instrumental; its approximately 67 MB model is downloaded only when requested and cached locally.
+- Optional review-first local lyric detection uses multilingual `whisper-tiny` through Transformers.js in a Web Worker. It never uploads audio or silently replaces editor lyrics; generated text/timestamps are explicitly labeled as a fallible draft.
 - WebGPU preference with multithreaded WASM fallback when cross-origin isolation is active.
 - One-time on-demand model download cached by Cache Storage; it is not part of the app bundle.
 - MP3/WAV and browser-supported FLAC decoding with explicit errors; 15-minute safety limit.
@@ -60,6 +62,7 @@ pnpm dlx vercel --prod
 - MP4 creation requires working WebCodecs H.264 and AAC encoders. The app tests both before enabling export and never labels an unsupported export successful.
 - Separation is compute- and memory-heavy. WebGPU-capable desktop Chromium is the best case. CPU/WASM and phones can take many times the song duration; iOS may terminate a backgrounded tab. Keep the app foregrounded.
 - The separator library reports progress but does not currently expose an interruptible inference signal. Cancel requests discard results at the next safe boundary; an in-flight model operation may finish first.
+- Local Whisper lyric detection is a review-only draft: singing, accents, overlapping voices, and residual accompaniment can produce wrong words or approximate phrase timestamps. It never applies or exports the draft without an explicit user action.
 - FLAC decoding depends on the browser. Use WAV or MP3 if it fails.
 - Project text/settings persist locally. Large audio stems intentionally remain session-only to avoid silently consuming device storage.
 - Indic export uses the device's native Noto/Nirmala/Latha/Mangal font stack and waits for `document.fonts.ready`. Verify the intended typeface/glyph coverage on the target device before distributing a video.

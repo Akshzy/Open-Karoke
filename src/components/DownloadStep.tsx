@@ -19,6 +19,9 @@ export function DownloadStep(props: {
   const [exporting, setExporting] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const base = safeBaseName(props.song.title);
+  const timedCount = props.lines.filter((line) => line.timed !== false).length;
+  const untimedCount = props.lines.length - timedCount;
+  const lyricsReady = timedCount > 0;
   useEffect(() => { mp4Support(props.aspect).then(setSupported).catch(() => setSupported(false)); }, [props.aspect]);
 
   const lrcBlob = () => new Blob([serializeLrc(props.lines, props.song.title)], { type: 'text/plain;charset=utf-8' });
@@ -54,11 +57,13 @@ export function DownloadStep(props: {
           <span className="download-icon"><Icon name="play" /></span>
           <div><strong>Karaoke video</strong><small>H.264 + AAC MP4 · instrumental + embedded lyric visuals</small></div>
           {exporting ? <button className="button secondary" onClick={() => controller.current?.abort()}><Icon name="stop" /> Cancel</button>
-            : <button className="button primary" disabled={supported !== true} onClick={exportVideo}><Icon name="download" /> {supported === null ? 'Checking…' : supported ? 'Create MP4' : 'Unsupported'}</button>}
+            : <button className="button primary" disabled={supported !== true || !lyricsReady} onClick={exportVideo}><Icon name="download" /> {supported === null ? 'Checking…' : !supported ? 'Unsupported' : lyricsReady ? 'Create MP4' : 'Add timed lyrics'}</button>}
         </div>
         {(exporting || detail) && <div className="export-progress"><progress value={progress} max={1} /><span>{detail} · {Math.round(progress * 100)}%</span></div>}
         {error && <p className="error" role="alert">{error}</p>}
         {supported === false && <p className="notice">This browser cannot produce a standards-compliant MP4 here. Use the verified audio + LRC fallback below, or try a current Chromium-based desktop browser.</p>}
+        {!lyricsReady && <p className="notice">Add at least one timed lyric line before creating a karaoke MP4. Instrumental WAV download remains available.</p>}
+        {lyricsReady && untimedCount > 0 && <p className="notice">{untimedCount} untimed {untimedCount === 1 ? 'line' : 'lines'} will not appear in the MP4 or LRC download.</p>}
         <div className="download-item">
           <span className="download-icon"><Icon name="music" /></span>
           <div><strong>Instrumental karaoke</strong><small>44.1 kHz WAV · vocals removed · no lyrics embedded</small></div>
