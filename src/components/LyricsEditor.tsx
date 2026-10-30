@@ -137,10 +137,18 @@ export function LyricsEditor(props: {
           <button className="text-button" onClick={() => setShowPaste((value) => !value)}>Paste</button>
         </div>
       </div>
-      <input ref={fileInput} hidden type="file" accept=".lrc,text/plain" onChange={async (event) => {
-        const file = event.target.files?.[0];
-        if (file) importText(await file.text());
-      }} />
+      <input
+        ref={fileInput}
+        hidden
+        type="file"
+        accept=".lrc,text/plain"
+        onClick={(event) => { event.currentTarget.value = ''; }}
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          if (file) importText(await file.text());
+          event.currentTarget.value = '';
+        }}
+      />
 
       <div className="lyrics-lookup">
         <div className="lookup-heading"><strong>Find Lyrics</strong><span>LRCLIB · optional metadata lookup</span></div>
