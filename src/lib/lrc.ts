@@ -19,7 +19,17 @@ export function parseLrc(input: string): LyricLine[] {
       });
     }
   }
-  return lines.sort((a, b) => a.time - b.time);
+  const sorted = lines.sort((a, b) => a.time - b.time);
+  const lyrics: LyricLine[] = [];
+  for (const line of sorted) {
+    if (line.text) {
+      lyrics.push(line);
+      continue;
+    }
+    const previous = lyrics.at(-1);
+    if (previous && line.time >= previous.time) previous.endTime = line.time;
+  }
+  return lyrics;
 }
 
 export function parsePlainLyrics(input: string): LyricLine[] {

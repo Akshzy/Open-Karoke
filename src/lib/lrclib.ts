@@ -3,6 +3,8 @@ import { parseLrc } from './lrc';
 
 const API_BASE = 'https://lrclib.net';
 const CLIENT_HEADER = 'OpenKaraoke Studio v0.1.0';
+const CACHE_NAME = 'openkaraoke-lyrics-v1';
+const CACHE_LIMIT = 12;
 
 export interface LrclibRecord {
   id: number;
@@ -70,42 +72,102 @@ function waitForRetry(ms: number, signal?: AbortSignal) {
 }
 
 function lrclibError(status: number) {
-  if (status >= 502 && status <= 504) {
+  if (status >= 500 && status <= 599) {
     return new Error('LRCLIB is temporarily overloaded. Audio playback and LRC import still work.');
   }
   return new Error(`LRCLIB search failed (${status}).`);
+}
+
+async function readCachedResponse(url: string) {
+  if (typeof caches === 'undefined') return undefined;
+  try {
+    const cached = await caches.open(CACHE_NAME);
+    return await cached.match(url);
+  } catch {
+    return undefined;
+  }
+}
+
+async function cacheResponse(url: string, response: Response) {
+  if (typeof caches === 'undefined' || !response.ok) return;
+  try {
+    const copy = response.clone();
+    const cached = await caches.open(CACHE_NAME);
+    await cached.put(url, copy);
+    const keys = await cached.keys();
+    await Promise.all(keys.slice(0, Math.max(0, keys.length - CACHE_LIMIT)).map((key) => cached.delete(key)));
+  } catch {
+    // Lyrics caching is a best-effort offline fallback; lookup must still succeed without it.
+  }
 }
 
 export async function searchLrclib(title: string, artist: string, duration: number, signal?: AbortSignal) {
   const cleanTitle = title.trim();
   const cleanArtist = artist.trim();
   const request = async (path: string) => {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await fetch(`${API_BASE}${path}`, { headers: { 'Lrclib-Client': CLIENT_HEADER }, signal });
-      if (response.status === 429) throw new Error(`LRCLIB rate limit reached. Try again${response.headers.get('Retry-After') ? ` after ${response.headers.get('Retry-After')} seconds` : ' shortly'}.`);
-      if (response.status < 502 || response.status > 504 || attempt === 1) return response;
-      const retryAfter = Number(response.headers.get('Retry-After'));
-      await waitForRetry(Number.isFinite(retryAfter) ? Math.min(2000, Math.max(0, retryAfter * 1000)) : 1000, signal);
+    const url = `${API_BASE}${path}`;
+    let lastResponse: Response | undefined;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch(url, { headers: { 'Lrclib-Client': CLIENT_HEADER }, signal });
+        if (response.ok) {
+          void cacheResponse(url, response);
+          return response;
+        }
+        if (response.status === 404) return response;
+        if (response.status === 429) {
+          const cached = await readCachedResponse(url);
+          if (cached) return cached;
+          throw new Error(`LRCLIB rate limit reached. Try again${response.headers.get('Retry-After') ? ` after ${response.headers.get('Retry-After')} seconds` : ' shortly'}.`);
+        }
+        lastResponse = response;
+        if (response.status < 500 || response.status > 599) return response;
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        lastError = error;
+      }
+      if (attempt < 2) {
+        const retryAfter = Number(lastResponse?.headers.get('Retry-After'));
+        const delay = Number.isFinite(retryAfter) ? Math.min(3000, Math.max(0, retryAfter * 1000)) : 600 * (2 ** attempt);
+        await waitForRetry(delay, signal);
+      }
     }
-    throw new Error('LRCLIB request failed.');
+    const cached = await readCachedResponse(url);
+    if (cached) return cached;
+    if (lastResponse) return lastResponse;
+    throw lastError instanceof Error ? new Error(`LRCLIB request failed: ${lastError.message}`) : new Error('LRCLIB request failed.');
   };
 
+  let lookupError: Error | undefined;
   if (cleanArtist) {
     // /api/get is the only LRCLIB lookup that accepts duration and matches within ±2s.
-    const exactQuery = new URLSearchParams({ track_name: cleanTitle, artist_name: cleanArtist, duration: String(duration) });
-    const exactResponse = await request(`/api/get?${exactQuery}`);
-    if (exactResponse.ok) return rankLyricsCandidates([await exactResponse.json() as LrclibRecord], cleanTitle, cleanArtist, duration);
-    if (exactResponse.status !== 404) throw lrclibError(exactResponse.status);
+    try {
+      const exactQuery = new URLSearchParams({ track_name: cleanTitle, artist_name: cleanArtist, duration: String(duration) });
+      const exactResponse = await request(`/api/get?${exactQuery}`);
+      if (exactResponse.ok) return rankLyricsCandidates([await exactResponse.json() as LrclibRecord], cleanTitle, cleanArtist, duration);
+      if (exactResponse.status !== 404) throw lrclibError(exactResponse.status);
+    } catch (error) {
+      lookupError = error instanceof Error ? error : new Error(String(error));
+    }
 
-    const preciseResponse = await request(`/api/search?${new URLSearchParams({ track_name: cleanTitle, artist_name: cleanArtist })}`);
-    if (!preciseResponse.ok) throw lrclibError(preciseResponse.status);
-    const precise = await preciseResponse.json() as LrclibRecord[];
-    if (precise.length) return rankLyricsCandidates(precise, cleanTitle, cleanArtist, duration);
+    try {
+      const preciseResponse = await request(`/api/search?${new URLSearchParams({ track_name: cleanTitle, artist_name: cleanArtist })}`);
+      if (!preciseResponse.ok) throw lrclibError(preciseResponse.status);
+      const precise = await preciseResponse.json() as LrclibRecord[];
+      if (precise.length) return rankLyricsCandidates(precise, cleanTitle, cleanArtist, duration);
+    } catch (error) {
+      lookupError = error instanceof Error ? error : new Error(String(error));
+    }
   }
 
-  const broadResponse = await request(`/api/search?${new URLSearchParams({ track_name: cleanTitle })}`);
-  if (!broadResponse.ok) throw lrclibError(broadResponse.status);
-  return rankLyricsCandidates(await broadResponse.json() as LrclibRecord[], cleanTitle, cleanArtist, duration);
+  try {
+    const broadResponse = await request(`/api/search?${new URLSearchParams({ track_name: cleanTitle })}`);
+    if (!broadResponse.ok) throw lrclibError(broadResponse.status);
+    return rankLyricsCandidates(await broadResponse.json() as LrclibRecord[], cleanTitle, cleanArtist, duration);
+  } catch (error) {
+    throw error instanceof Error ? error : lookupError ?? new Error(String(error));
+  }
 }
 
 function scalar(value: string): string {
@@ -166,7 +228,7 @@ export function parseLyricsfile(input: string, recordId = 0): LyricLine[] {
       text: line.text,
       words,
     };
-  });
+  }).filter((line) => line.text.length > 0);
 }
 
 export function lyricsFromRecord(record: LrclibRecord): { lines: LyricLine[]; kind: RankedLyrics['syncKind'] } {

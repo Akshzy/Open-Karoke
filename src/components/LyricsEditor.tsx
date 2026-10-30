@@ -153,7 +153,7 @@ export function LyricsEditor(props: {
         </div>
         <small>Derived from “{props.originalTitle}”. Only title, optional artist, and duration ({props.songDuration.toFixed(1)}s) are sent to LRCLIB. Audio never leaves this device.</small>
         {lookupMessage && <p className={lookupState === 'error' ? 'error' : 'lookup-message'} role="status">{lookupMessage}</p>}
-        {lookupState === 'no-match' && <div className="no-lyrics-actions">
+        {(lookupState === 'no-match' || lookupState === 'error') && <div className="no-lyrics-actions">
           <button className="button secondary" onClick={() => fileInput.current?.click()}>Import synchronized LRC</button>
           <button className="button secondary" onClick={() => setShowPaste(true)}>Paste lyrics or LRC</button>
         </div>}

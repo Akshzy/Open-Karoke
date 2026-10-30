@@ -41,6 +41,20 @@ plain: |
     ]);
   });
 
+  it('does not import empty Lyricsfile gap markers as editable lyric rows', () => {
+    const lines = parseLyricsfile(`version: '1.0'
+lines:
+  - text: 'வரி'
+    start_ms: 500
+    end_ms: 1500
+  - text: ''
+    start_ms: 1500
+    end_ms: 2500
+  - text: 'அடுத்த வரி'
+    start_ms: 2500`, 7);
+    expect(lines.map((line) => line.text)).toEqual(['வரி', 'அடுத்த வரி']);
+  });
+
   it('prioritizes title, artist, original duration, and word sync', () => {
     const ranked = rankLyricsCandidates([
       { ...base, id: 2, duration: 215, hasWordSync: true },
@@ -93,13 +107,41 @@ plain: |
     expect(result[0].id).toBe(base.id);
   });
 
-  it('returns an empty result and retries transient LRCLIB overload once', async () => {
+  it('returns an empty result and retries transient LRCLIB overload twice', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', { status: 200 })));
     await expect(searchLrclib('Missing song', '', 100)).resolves.toEqual([]);
     const overloaded = vi.fn(async () => new Response('{}', { status: 503, headers: { 'Retry-After': '0' } }));
     vi.stubGlobal('fetch', overloaded);
     await expect(searchLrclib('Unavailable song', '', 100)).rejects.toThrow('LRCLIB is temporarily overloaded');
-    expect(overloaded).toHaveBeenCalledTimes(2);
+    expect(overloaded).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries all server errors, including the observed 505 response', async () => {
+    const unavailable = vi.fn(async () => new Response('{}', { status: 505, headers: { 'Retry-After': '0' } }));
+    vi.stubGlobal('fetch', unavailable);
+    await expect(searchLrclib('Unavailable song', '', 100)).rejects.toThrow('LRCLIB is temporarily overloaded');
+    expect(unavailable).toHaveBeenCalledTimes(3);
+  });
+
+  it('uses a cached successful search when LRCLIB is temporarily unavailable', async () => {
+    const cached = new Response(JSON.stringify([base]), { status: 200 });
+    vi.stubGlobal('caches', { open: vi.fn(async () => ({ match: vi.fn(async () => cached.clone()) })) });
+    const unavailable = vi.fn(async () => new Response('{}', { status: 503, headers: { 'Retry-After': '0' } }));
+    vi.stubGlobal('fetch', unavailable);
+    const result = await searchLrclib(base.trackName, '', base.duration);
+    expect(result[0].id).toBe(base.id);
+    expect(unavailable).toHaveBeenCalledTimes(3);
+  });
+
+  it('stores a usable copy of successful results before the caller consumes the response', async () => {
+    const put = vi.fn(async (_url: string, _response: Response) => undefined);
+    vi.stubGlobal('caches', { open: vi.fn(async () => ({ put, keys: vi.fn(async () => []), delete: vi.fn() })) });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([base]), { status: 200 })));
+    const result = await searchLrclib(base.trackName, '', base.duration);
+    expect(result[0].id).toBe(base.id);
+    await vi.waitFor(() => expect(put).toHaveBeenCalledOnce());
+    const stored = put.mock.calls[0][1] as Response;
+    await expect(stored.json()).resolves.toEqual([base]);
   });
 
   it('prefers Lyricsfile word sync, then LRC, and leaves plain lyrics untimed', () => {

@@ -22,6 +22,13 @@ describe('LRC parsing', () => {
     ]);
   });
 
+  it('treats empty LRC timestamps as instrumental gaps instead of blank lyric rows', () => {
+    const lines = parseLrc('[00:01.00]First line\n[00:03.50]\n[00:05.00]Next line');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ text: 'First line', time: 1, endTime: 3.5 });
+    expect(lyricDisplayState(lines, 4)).toMatchObject({ kind: 'gap', currentIndex: -1, nextIndex: 1 });
+  });
+
   it('round-trips times and UTF-8 text', () => {
     const lines = parseLrc('[01:02.34]ഒരു വരി');
     expect(parseTimestamp(formatTimestamp(lines[0].time))).toBeCloseTo(62.34);
