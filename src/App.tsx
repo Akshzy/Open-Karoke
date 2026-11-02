@@ -25,6 +25,7 @@ export default function App() {
   const [toast, setToast] = useState('');
   const separationAbort = useRef<AbortController | null>(null);
   const vocalAbort = useRef<AbortController | null>(null);
+  const fileLoadId = useRef(0);
   const songRef = useRef<SongState | null>(null);
   songRef.current = song;
 
@@ -39,11 +40,14 @@ export default function App() {
   }, []);
 
   const handleFile = async (file: File) => {
+    const loadId = ++fileLoadId.current;
+    separationAbort.current?.abort();
     vocalAbort.current?.abort();
     setStatus(initialStatus);
-      setVocalStatus(initialStatus);
+    setVocalStatus(initialStatus);
     try {
       const { duration } = await inspectAudio(file);
+      if (loadId !== fileLoadId.current) return;
       if (duration > 15 * 60) throw new Error('For browser memory safety, this build limits songs to 15 minutes. Trim the file and try again.');
       if (song) [song.originalUrl, song.instrumentalUrl, song.vocalsUrl].forEach((url) => url && URL.revokeObjectURL(url));
       const metadata = metadataFromFilename(file.name);
@@ -81,17 +85,27 @@ export default function App() {
 
   const runSeparation = async () => {
     if (!song) return;
-    separationAbort.current = new AbortController();
+    const targetFile = song.file;
+    const controller = new AbortController();
+    separationAbort.current = controller;
     setStatus({ ...initialStatus, phase: 'loading-model', detail: 'Loading the local AI model' });
     try {
-      const stems = await separateSong(song, setStatus, separationAbort.current.signal);
-      setSong((current) => current ? { ...current, ...stems } : current);
+      const stems = await separateSong(song, (next) => {
+        if (songRef.current?.file === targetFile) setStatus(next);
+      }, controller.signal);
+      if (songRef.current?.file !== targetFile) {
+        [stems.instrumentalUrl, stems.vocalsUrl].forEach(URL.revokeObjectURL);
+        return;
+      }
+      setSong((current) => current?.file === targetFile ? { ...current, ...stems } : current);
       setStatus({ ...initialStatus, phase: 'done', fraction: 1, detail: 'Instrumental ready' });
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') setStatus({ ...initialStatus, phase: 'cancelled', detail: 'Cancelled' });
-      else setStatus({ ...initialStatus, phase: 'error', error: error instanceof Error ? error.message : String(error) });
+      if (songRef.current?.file === targetFile) {
+        if (error instanceof DOMException && error.name === 'AbortError') setStatus({ ...initialStatus, phase: 'cancelled', detail: 'Cancelled' });
+        else setStatus({ ...initialStatus, phase: 'error', error: error instanceof Error ? error.message : String(error) });
+      }
     } finally {
-      separationAbort.current = null;
+      if (separationAbort.current === controller) separationAbort.current = null;
     }
   };
 

@@ -49,10 +49,20 @@ export function UploadStep(props: {
             {props.song.artist && <span>{props.song.artist}</span>}
             <span>{timeLabel(props.song.duration)} · {(props.song.file.size / 1024 / 1024).toFixed(1)} MB · {props.song.file.type || 'audio'}</span>
           </div>
-          <button className="icon-button" onClick={() => input.current?.click()} aria-label="Choose a different song"><Icon name="trash" /></button>
+          <button className="icon-button" disabled={busy} onClick={() => input.current?.click()} aria-label={busy ? 'Wait for processing before choosing another song' : 'Choose a different song'}><Icon name="trash" /></button>
         </div>
       )}
-      <input ref={input} hidden type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/flac" onChange={(event) => choose(event.target.files?.[0])} />
+      <input
+        ref={input}
+        hidden
+        type="file"
+        accept="audio/mpeg,audio/wav,audio/x-wav,audio/flac"
+        onClick={(event) => { event.currentTarget.value = ''; }}
+        onChange={(event) => {
+          choose(event.currentTarget.files?.[0]);
+          event.currentTarget.value = '';
+        }}
+      />
 
       {props.song && props.status.phase !== 'done' && (
         <div className="process-card">

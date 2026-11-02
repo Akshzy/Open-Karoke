@@ -3,15 +3,36 @@ import type { SeparationStatus, SongState } from '../types';
 import { ensureKaraokeModel, ensureVocalModel, KARAOKE_MODEL_URL, VOCAL_MODEL_URL } from './modelCache';
 
 export async function inspectAudio(file: File): Promise<{ duration: number }> {
-  const context = new AudioContext();
+  if (!file.size) throw new Error('The selected audio file is empty.');
+  const url = URL.createObjectURL(file);
+  const audio = document.createElement('audio');
+  audio.preload = 'metadata';
   try {
-    const buffer = await context.decodeAudioData(await file.arrayBuffer());
-    if (!buffer.duration || !Number.isFinite(buffer.duration)) throw new Error('The audio has no playable duration.');
-    return { duration: buffer.duration };
+    const duration = await new Promise<number>((resolve, reject) => {
+      const cleanup = () => {
+        audio.removeEventListener('loadedmetadata', loaded);
+        audio.removeEventListener('error', failed);
+      };
+      const loaded = () => {
+        cleanup();
+        if (Number.isFinite(audio.duration) && audio.duration > 0) resolve(audio.duration);
+        else reject(new Error('The audio has no playable duration.'));
+      };
+      const failed = () => {
+        cleanup();
+        reject(new Error('The browser could not read this audio format.'));
+      };
+      audio.addEventListener('loadedmetadata', loaded, { once: true });
+      audio.addEventListener('error', failed, { once: true });
+      audio.src = url;
+    });
+    return { duration };
   } catch (error) {
-    throw new Error(`This browser could not decode ${file.name}. Try MP3 or WAV. ${error instanceof Error ? error.message : ''}`.trim());
+    throw new Error(`This browser could not open ${file.name}. Try MP3 or WAV. ${error instanceof Error ? error.message : ''}`.trim());
   } finally {
-    await context.close();
+    audio.removeAttribute('src');
+    audio.load();
+    URL.revokeObjectURL(url);
   }
 }
 
@@ -55,7 +76,7 @@ export async function separateSong(
       modelUrl: KARAOKE_MODEL_URL,
       onProgress(progress) {
         if (signal.aborted) return;
-        const chunk = progress.chunk && progress.totalChunks ? ` · ${progress.chunk}/${progress.totalChunks}` : '';
+        const chunk = progress.chunk !== undefined && progress.totalChunks !== undefined ? ` · ${progress.chunk}/${progress.totalChunks}` : '';
         onStatus({
           phase: progress.stage,
           fraction: progress.fraction,
@@ -99,7 +120,7 @@ export async function enhanceVocalStem(
       logLevel: 'warning', modelPath: VOCAL_MODEL_URL, modelUrl: VOCAL_MODEL_URL,
       onProgress(progress) {
         if (signal.aborted) return;
-        const chunk = progress.chunk && progress.totalChunks ? ` · ${progress.chunk}/${progress.totalChunks}` : '';
+        const chunk = progress.chunk !== undefined && progress.totalChunks !== undefined ? ` · ${progress.chunk}/${progress.totalChunks}` : '';
         onStatus({ phase: progress.stage, fraction: progress.fraction, detail: `${stageText[progress.stage]}${chunk}`, backend });
       },
     },
