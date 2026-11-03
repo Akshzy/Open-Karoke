@@ -24,11 +24,9 @@ OpenKaraoke Studio is a free, open-source, mobile-first karaoke creator built wi
 
 | Step | Capability |
 | --- | --- |
-| **1 · Upload** | Reads local MP3/WAV and browser-supported FLAC metadata without uploading or fully decoding the file. |
-| **2 · Separate** | Runs `UVR-MDX-NET-Inst_HQ_3` locally through ONNX Runtime Web and produces instrumental + vocal WAV stems. |
-| **3 · Synchronize** | Imports UTF-8 LRC, searches LRCLIB by title/artist/duration, or lets users timestamp supplied lyrics manually. |
-| **4 · Preview** | Plays the instrumental with current/next-line highlighting, seeking, fullscreen and global lyric offset. |
-| **5 · Export** | Creates H.264/AAC MP4 in portrait or landscape, plus instrumental WAV, vocal WAV and LRC downloads. |
+| **1 · Upload** | Reads local MP3/WAV or browser-supported FLAC metadata, then runs `UVR-MDX-NET-Inst_HQ_3` locally to create instrumental + vocal WAV stems. |
+| **2 · Edit & preview** | Imports UTF-8 LRC, searches LRCLIB, supports manual timing and previews current/next synchronized lyrics. |
+| **3 · Download** | Creates H.264/AAC MP4 in portrait or landscape, plus instrumental WAV, vocal WAV and LRC downloads. |
 
 Malayalam, Tamil, Hindi, English and other Unicode scripts are preserved throughout the editor, player, LRC and canvas-rendered video.
 
