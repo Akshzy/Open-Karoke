@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LyricLine, SeparationStatus, SongState, VideoAspect, WorkflowStep } from './types';
-import { enhanceVocalStem, inspectAudio, separateSong } from './lib/audio';
+import { enhanceVocalStem, inspectAudio, mobileSongLimitSeconds, separateSong, separationRuntime } from './lib/audio';
 import { loadProject, saveProject } from './lib/storage';
 import { StepHeader } from './components/StepHeader';
 import { UploadStep } from './components/UploadStep';
@@ -10,7 +10,7 @@ import { Icon } from './components/Icons';
 import { metadataFromFilename } from './lib/metadata';
 
 const initialStatus: SeparationStatus = {
-  phase: 'idle', fraction: 0, detail: 'Ready to split locally', backend: 'gpu' in navigator ? 'WebGPU' : 'WASM',
+  phase: 'idle', fraction: 0, detail: 'Ready to split locally', backend: separationRuntime().backend,
 };
 
 export default function App() {
@@ -48,7 +48,8 @@ export default function App() {
     try {
       const { duration } = await inspectAudio(file);
       if (loadId !== fileLoadId.current) return;
-      if (duration > 15 * 60) throw new Error('For browser memory safety, this build limits songs to 15 minutes. Trim the file and try again.');
+      const durationLimit = mobileSongLimitSeconds();
+      if (duration > durationLimit) throw new Error(`For this device's memory safety, songs are limited to ${Math.round(durationLimit / 60)} minutes. Trim the file or use a desktop browser.`);
       if (song) [song.originalUrl, song.instrumentalUrl, song.vocalsUrl].forEach((url) => url && URL.revokeObjectURL(url));
       const metadata = metadataFromFilename(file.name);
       setLyrics([]);

@@ -68,7 +68,7 @@ export function UploadStep(props: {
         <div className="process-card">
           <div className="process-top">
             <span className="upload-icon small"><Icon name="music" /></span>
-            <div><strong>{busy ? props.status.detail : 'Create the instrumental'}</strong><small>{props.status.backend} preferred · WASM fallback · model cached after first use</small></div>
+            <div><strong>{busy ? props.status.detail : 'Create the instrumental'}</strong><small>{props.status.backend === 'WASM' ? 'WASM compatibility mode · keep this tab open' : 'WebGPU preferred · WASM fallback'} · model cached after first use</small></div>
             <b>{busy ? `${Math.round(props.status.fraction * 100)}%` : 'ON DEVICE'}</b>
           </div>
           {busy && <progress value={props.status.fraction} max={1}>{props.status.fraction}</progress>}

@@ -42,6 +42,32 @@ const stageText: Record<SeparationProgress['stage'], string> = {
   [SeparationStage.WritingOutput]: 'Preparing WAV downloads',
 };
 
+interface NavigatorWithDeviceHints extends Navigator {
+  deviceMemory?: number;
+  userAgentData?: { mobile?: boolean };
+}
+
+export function isLikelyMobileDevice(nav: NavigatorWithDeviceHints = navigator) {
+  return nav.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(nav.userAgent);
+}
+
+export function mobileSongLimitSeconds(nav: NavigatorWithDeviceHints = navigator) {
+  if (!isLikelyMobileDevice(nav)) return 15 * 60;
+  if (nav.deviceMemory !== undefined && nav.deviceMemory <= 2) return 3 * 60;
+  if (nav.deviceMemory !== undefined && nav.deviceMemory >= 8) return 8 * 60;
+  return 5 * 60;
+}
+
+export function separationRuntime(nav: NavigatorWithDeviceHints = navigator) {
+  const mobile = isLikelyMobileDevice(nav);
+  const webgpu = 'gpu' in nav;
+  const executionProviders: Array<'wasm' | 'webgpu'> = mobile || !webgpu ? ['wasm'] : ['webgpu', 'wasm'];
+  return {
+    backend: mobile || !webgpu ? 'WASM' as const : 'WebGPU' as const,
+    executionProviders,
+  };
+}
+
 export function mapMdxStemUrls(urls: string[], primaryStem: 'instrumental' | 'vocals') {
   if (urls.length !== 2) throw new Error('The separator did not return both expected stems.');
   // web-audio-separation returns the derived secondary stem first, then the model's primary stem.
@@ -55,8 +81,9 @@ export async function separateSong(
   onStatus: (status: SeparationStatus) => void,
   signal: AbortSignal,
 ): Promise<{ vocalsUrl: string; instrumentalUrl: string }> {
-  const backend: SeparationStatus['backend'] = 'gpu' in navigator ? 'WebGPU' : 'WASM';
-  await ensureKaraokeModel(({ loaded, total, cached }) => {
+  const runtime = separationRuntime();
+  const backend: SeparationStatus['backend'] = runtime.backend;
+  const model = await ensureKaraokeModel(({ loaded, total, cached }) => {
     if (signal.aborted) return;
     onStatus({
       phase: 'loading-model',
@@ -67,35 +94,42 @@ export async function separateSong(
       backend,
     });
   }, signal);
-  if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
-
-  const separator = createSeparator('UVR-MDX-NET-Inst_HQ_3', {
-    common: {
-      logLevel: 'warning',
-      modelPath: KARAOKE_MODEL_URL,
-      modelUrl: KARAOKE_MODEL_URL,
-      onProgress(progress) {
-        if (signal.aborted) return;
-        const chunk = progress.chunk !== undefined && progress.totalChunks !== undefined ? ` · ${progress.chunk}/${progress.totalChunks}` : '';
-        onStatus({
-          phase: progress.stage,
-          fraction: progress.fraction,
-          detail: `${stageText[progress.stage]}${chunk}`,
-          backend,
-        });
-      },
-    },
-    mdx: { executionProviders: ['webgpu', 'wasm'], segmentSize: 256, overlap: 0.25, batchSize: 1 },
-  });
-
-  await separator.loadModel();
-  if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
-  const urls = await separator.separate(song.originalUrl);
   if (signal.aborted) {
-    urls.forEach(URL.revokeObjectURL);
+    model.release();
     throw new DOMException('Cancelled', 'AbortError');
   }
-  return mapMdxStemUrls(urls, 'instrumental');
+
+  try {
+    const separator = createSeparator('UVR-MDX-NET-Inst_HQ_3', {
+      common: {
+        logLevel: 'warning',
+        modelPath: model.url,
+        modelUrl: KARAOKE_MODEL_URL,
+        onProgress(progress) {
+          if (signal.aborted) return;
+          const chunk = progress.chunk !== undefined && progress.totalChunks !== undefined ? ` · ${progress.chunk}/${progress.totalChunks}` : '';
+          onStatus({
+            phase: progress.stage,
+            fraction: progress.fraction,
+            detail: `${stageText[progress.stage]}${chunk}`,
+            backend,
+          });
+        },
+      },
+      mdx: { executionProviders: runtime.executionProviders, segmentSize: 256, overlap: 0.25, batchSize: 1 },
+    });
+
+    await separator.loadModel();
+    if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+    const urls = await separator.separate(song.originalUrl);
+    if (signal.aborted) {
+      urls.forEach(URL.revokeObjectURL);
+      throw new DOMException('Cancelled', 'AbortError');
+    }
+    return mapMdxStemUrls(urls, 'instrumental');
+  } finally {
+    model.release();
+  }
 }
 
 export async function enhanceVocalStem(
@@ -103,8 +137,9 @@ export async function enhanceVocalStem(
   onStatus: (status: SeparationStatus) => void,
   signal: AbortSignal,
 ): Promise<string> {
-  const backend: SeparationStatus['backend'] = 'gpu' in navigator ? 'WebGPU' : 'WASM';
-  await ensureVocalModel(({ loaded, total, cached }) => {
+  const runtime = separationRuntime();
+  const backend: SeparationStatus['backend'] = runtime.backend;
+  const model = await ensureVocalModel(({ loaded, total, cached }) => {
     if (signal.aborted) return;
     onStatus({
       phase: 'loading-model',
@@ -113,32 +148,39 @@ export async function enhanceVocalStem(
       backend,
     });
   }, signal);
-  if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+  if (signal.aborted) {
+    model.release();
+    throw new DOMException('Cancelled', 'AbortError');
+  }
 
-  const separator = createSeparator('Kim_Vocal_2', {
-    common: {
-      logLevel: 'warning', modelPath: VOCAL_MODEL_URL, modelUrl: VOCAL_MODEL_URL,
-      onProgress(progress) {
-        if (signal.aborted) return;
-        const chunk = progress.chunk !== undefined && progress.totalChunks !== undefined ? ` · ${progress.chunk}/${progress.totalChunks}` : '';
-        onStatus({ phase: progress.stage, fraction: progress.fraction, detail: `${stageText[progress.stage]}${chunk}`, backend });
-      },
-    },
-    mdx: { executionProviders: ['webgpu', 'wasm'], segmentSize: 256, overlap: 0.25, batchSize: 1 },
-  });
-
-  await separator.loadModel();
-  const inputUrl = URL.createObjectURL(song.file);
   try {
-    const urls = await separator.separate(inputUrl);
-    if (signal.aborted) {
-      urls.forEach(URL.revokeObjectURL);
-      throw new DOMException('Cancelled', 'AbortError');
+    const separator = createSeparator('Kim_Vocal_2', {
+      common: {
+        logLevel: 'warning', modelPath: model.url, modelUrl: VOCAL_MODEL_URL,
+        onProgress(progress) {
+          if (signal.aborted) return;
+          const chunk = progress.chunk !== undefined && progress.totalChunks !== undefined ? ` · ${progress.chunk}/${progress.totalChunks}` : '';
+          onStatus({ phase: progress.stage, fraction: progress.fraction, detail: `${stageText[progress.stage]}${chunk}`, backend });
+        },
+      },
+      mdx: { executionProviders: runtime.executionProviders, segmentSize: 256, overlap: 0.25, batchSize: 1 },
+    });
+
+    await separator.loadModel();
+    const inputUrl = URL.createObjectURL(song.file);
+    try {
+      const urls = await separator.separate(inputUrl);
+      if (signal.aborted) {
+        urls.forEach(URL.revokeObjectURL);
+        throw new DOMException('Cancelled', 'AbortError');
+      }
+      const stems = mapMdxStemUrls(urls, 'vocals');
+      URL.revokeObjectURL(stems.instrumentalUrl);
+      return stems.vocalsUrl;
+    } finally {
+      URL.revokeObjectURL(inputUrl);
     }
-    const stems = mapMdxStemUrls(urls, 'vocals');
-    URL.revokeObjectURL(stems.instrumentalUrl);
-    return stems.vocalsUrl;
   } finally {
-    URL.revokeObjectURL(inputUrl);
+    model.release();
   }
 }

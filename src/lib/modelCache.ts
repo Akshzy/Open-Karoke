@@ -9,6 +9,11 @@ export interface ModelDownloadProgress {
   cached: boolean;
 }
 
+export interface LocalModelHandle {
+  url: string;
+  release: () => void;
+}
+
 function validSize(value: number) {
   return Number.isFinite(value) && value >= MIN_MODEL_BYTES;
 }
@@ -17,7 +22,7 @@ async function ensureModel(
   modelUrl: string,
   onProgress: (progress: ModelDownloadProgress) => void,
   signal?: AbortSignal,
-) {
+): Promise<LocalModelHandle> {
   if (!('caches' in globalThis)) {
     throw new Error('Cache Storage is unavailable. Leave private browsing and retry so the local model can be stored.');
   }
@@ -28,7 +33,8 @@ async function ensureModel(
     const size = Number(cached.headers.get('content-length'));
     if (validSize(size)) {
       onProgress({ loaded: size, total: size, cached: true });
-      return;
+      const objectUrl = URL.createObjectURL(await cached.blob());
+      return { url: objectUrl, release: () => URL.revokeObjectURL(objectUrl) };
     }
     await cache.delete(modelUrl);
   }
@@ -45,30 +51,35 @@ async function ensureModel(
   }
 
   const declaredTotal = Number(response.headers.get('content-length'));
+  const cacheResponse = response.clone();
+  const headers = new Headers(cacheResponse.headers);
+  headers.set('content-type', 'application/octet-stream');
+  headers.set('x-openkaraoke-model-source', 'Blane187/all_public_uvr_models');
+  let cacheWriteError: unknown;
+  const cacheWrite = Promise.resolve(cache.put(modelUrl, new Response(cacheResponse.body, { status: 200, headers })))
+    .catch((error: unknown) => { cacheWriteError = error; });
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
   let loaded = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     if (value) {
-      chunks.push(value);
       loaded += value.byteLength;
       onProgress({ loaded, total: validSize(declaredTotal) ? declaredTotal : 66_759_214, cached: false });
     }
   }
-  if (!validSize(loaded)) throw new Error(`Model download was incomplete (${(loaded / 1024 / 1024).toFixed(1)} MB received).`);
-
-  const blob = new Blob(chunks as BlobPart[], { type: 'application/octet-stream' });
-  await cache.put(modelUrl, new Response(blob, {
-    headers: {
-      'content-type': 'application/octet-stream',
-      'content-length': String(loaded),
-      'x-openkaraoke-model-source': 'Blane187/all_public_uvr_models',
-    },
-  }));
+  await cacheWrite;
+  if (!validSize(loaded) || (validSize(declaredTotal) && loaded !== declaredTotal)) {
+    await cache.delete(modelUrl);
+    throw new Error(`Model download was incomplete (${(loaded / 1024 / 1024).toFixed(1)} MB received).`);
+  }
+  if (cacheWriteError) throw new Error(`The model downloaded but could not be cached. ${cacheWriteError instanceof Error ? cacheWriteError.message : ''}`.trim());
   await navigator.storage?.persist?.().catch(() => false);
   onProgress({ loaded, total: loaded, cached: false });
+  const stored = await cache.match(modelUrl);
+  if (!stored) throw new Error('The model downloaded but could not be opened from local storage.');
+  const objectUrl = URL.createObjectURL(await stored.blob());
+  return { url: objectUrl, release: () => URL.revokeObjectURL(objectUrl) };
 }
 
 export function ensureKaraokeModel(onProgress: (progress: ModelDownloadProgress) => void, signal?: AbortSignal) {
